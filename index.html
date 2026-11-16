@@ -127,11 +127,25 @@ input:focus, select:focus { outline: 2px solid var(--turquoise); outline-offset:
 .fiche ol.notices li { margin: 2px 0; }
 .fiche ol.notices a { color: #1f7a7e; }
 .fiche button.lien { font: inherit; background: none; border: 0; padding: 0; color: #1f7a7e; text-decoration: underline; cursor: pointer; }
+.fermer-couches { display: none; }
 @media (max-width: 600px) {
   .panneau { top: 8px; left: 8px; right: 8px; width: auto; }
   .panneau h1 { font-size: 16px; }
   .panneau header p { font-size: 12px; }
-  .leaflet-top.leaflet-right { top: auto; bottom: 28px; }
+  /* zoom et couches en bas à droite, au-dessus de l'échelle et de l'attribution */
+  .leaflet-top.leaflet-right { top: auto; bottom: 46px; }
+  /* boîte des couches dépliée : volet en bas de l'écran, défilant ; le zoom s'efface le temps qu'elle est ouverte */
+  .leaflet-control-layers-expanded { position: fixed; left: 0; right: 0; bottom: 0; margin: 0 !important;
+    max-height: 75vh; overflow-y: auto; border-radius: 12px 12px 0 0 !important; padding-top: 6px; }
+  .leaflet-control-layers-expanded .leaflet-control-layers-list { height: auto !important; overflow: visible; }
+  .leaflet-control-layers-expanded .section-fiches { width: auto; }
+  .leaflet-top.leaflet-right:has(.leaflet-control-layers-expanded) .leaflet-control-zoom { visibility: hidden; }
+  .leaflet-control-layers-expanded .fermer-couches { display: block; position: sticky; top: 0; z-index: 2; margin: 0 -8px 4px auto;
+    width: 36px; height: 36px; border: 0; border-radius: 8px; background: #fff; color: var(--doux); font-size: 22px; line-height: 1; cursor: pointer; }
+}
+/* écran bas (téléphone en paysage) : listes de notices plus courtes pour que la fiche tienne */
+@media (max-height: 500px) {
+  .fiche .notices { max-height: 130px; }
 }
 </style>
 </head>
@@ -323,6 +337,10 @@ const choixCouches = L.control.layers({}, {
 {
   const boite = choixCouches.getContainer();
   const bouton = boite.querySelector(".leaflet-control-layers-toggle");
+  // téléphone : bouton de fermeture du volet des couches (ailleurs, la boîte se ferme en quittant la souris)
+  const fermer = Object.assign(document.createElement("button"), { type: "button", className: "fermer-couches", textContent: "×",
+    title: "Fermer", ariaLabel: "Fermer le choix des fonds et couches" });
+  fermer.addEventListener("click", ev => { ev.stopPropagation(); choixCouches.collapse(); });
   bouton.title = "Fond de carte et couches"; bouton.setAttribute("aria-label", "Fond de carte et couches");
   const intitule = texte => Object.assign(document.createElement("p"), { className: "intitule", textContent: texte });
   boite.querySelector(".leaflet-control-layers-overlays").prepend(intitule("Couches"));
@@ -431,8 +449,16 @@ const choixCouches = L.control.layers({}, {
   fondsUI.section.append(plus);
 
   const plansUI = listeFiches("Plans anciens", plansAnciens, 100, true);
-  boite.querySelector(".leaflet-control-layers-list").prepend(fondsUI.section, separateur(), plansUI.section, separateur());
+  boite.querySelector(".leaflet-control-layers-list").prepend(fermer, fondsUI.section, separateur(), plansUI.section, separateur());
 }
+
+// Fiches (popups) sur téléphone ou écran bas (paysage) : le panneau se replie quand une fiche s'ouvre, et Leaflet
+// la cadre sous lui (lu par Leaflet au moment de cadrer la fiche ; ailleurs, réglage par défaut)
+Object.defineProperty(L.Popup.prototype.options, "autoPanPaddingTopLeft", { configurable: true, get() {
+  if (!surTelephone() && window.innerHeight > 500) return null;
+  replier(true);
+  return [10, Math.round(document.getElementById("panneau").getBoundingClientRect().bottom) + 10];
+} });
 
 // Marges de cadrage : laisser la place du panneau (à gauche sur grand écran, en haut sur téléphone)
 const marges = extra => window.innerWidth > 600
@@ -457,7 +483,7 @@ carte.on("popupopen", e => e.popup.getElement().querySelectorAll("button[data-qu
   .forEach(b => b.addEventListener("click", () => { carte.closePopup(); choisirQuartier(b.dataset.quartier); })));
 
 function ouvrirVoie(v) {
-  carte.fitBounds(v.couche.getBounds(), marges({ maxZoom: 17 }));
+  carte.fitBounds(v.couche.getBounds(), marges({ maxZoom: 17, animate: false }));   // sans animation : la fiche se cadre sur la vue finale
   const c = v.couche.getBounds().getCenter();
   v.couche.openPopup(c);
 }
@@ -482,7 +508,7 @@ function proposer() {
 function choisir(i) {
   const e = resultats[i]; if (!e) return;
   champ.value = e.v.nom; liste.innerHTML = ""; champ.setAttribute("aria-expanded", false);
-  if (e.site) { carte.setView(e.v.couche.getLatLng(), 17); e.v.couche.openPopup(); } else ouvrirVoie(e.v);
+  if (e.site) { carte.setView(e.v.couche.getLatLng(), 17, { animate: false }); e.v.couche.openPopup(); } else ouvrirVoie(e.v);
 }
 champ.addEventListener("input", proposer);
 champ.addEventListener("keydown", ev => {
@@ -521,7 +547,7 @@ champ.addEventListener("keydown", ev => { if (ev.key === "Enter" && surTelephone
 // Lien direct : #voie=<id>, #quartier=<id> ou #site=<id>
 function suivreLien() {
   const m = location.hash.match(/^#(voie|quartier|site)=(.+)$/); if (!m) return;
-  if (m[1] === "site" && parSite[m[2]]) { const s = parSite[m[2]]; carte.setView(s.couche.getLatLng(), 17); s.couche.openPopup(); }
+  if (m[1] === "site" && parSite[m[2]]) { const s = parSite[m[2]]; carte.setView(s.couche.getLatLng(), 17, { animate: false }); s.couche.openPopup(); }
   if (m[1] === "voie" && parVoie[m[2]]) ouvrirVoie(parVoie[m[2]]);
   if (m[1] === "quartier") { const o = D.quartiers.find(q => q.id === m[2]); if (o) choisirQuartier(o.nom); }
 }
