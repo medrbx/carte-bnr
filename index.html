@@ -364,7 +364,8 @@ const choixCouches = L.control.layers({}, {
   const intitule = texte => Object.assign(document.createElement("p"), { className: "intitule", textContent: texte });
   boite.querySelector(".leaflet-control-layers-overlays").prepend(intitule("Couches"));
 
-  // Sections « Fond de carte » et « Plans anciens », en tête de la boîte, sur le modèle du gestionnaire
+  // Sections « Plans anciens » puis « Fond de carte », sous les couches de la BN-R (même ordre que le dessin :
+  // couches, puis plans anciens, puis fonds), sur le modèle du gestionnaire
   // de couches du Géoportail : une fiche par couche avec poignée (glisser, ou flèches haut/bas au clavier,
   // pour l'ordre d'affichage : en haut de la liste = dessiné au-dessus), vignette, nom, œil (afficher/masquer)
   // et chevron (réglages : opacité, « Centrer sur le plan » pour les plans anciens, source).
@@ -468,7 +469,9 @@ const choixCouches = L.control.layers({}, {
   fondsUI.section.append(plus);
 
   const plansUI = listeFiches("Plans anciens", plansAnciens, 100, true);
-  boite.querySelector(".leaflet-control-layers-list").prepend(fermer, fondsUI.section, separateur(), plansUI.section, separateur());
+  const listeBoite = boite.querySelector(".leaflet-control-layers-list");
+  listeBoite.prepend(fermer);
+  listeBoite.append(separateur(), plansUI.section, separateur(), fondsUI.section);
 }
 
 // Fiches (popups) sur téléphone ou écran bas (paysage) : le panneau se replie quand une fiche s'ouvre, et Leaflet
