@@ -16,8 +16,8 @@ html, body { height: 100%; margin: 0; }
 body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--encre); background: var(--fond); }
 #carte { position: absolute; inset: 0; }
 .panneau { position: absolute; z-index: 1000; top: 12px; left: 12px; width: 340px; max-width: calc(100% - 24px);
-  background: var(--fond); border-radius: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.2); overflow: hidden; }
-.bandeau { display: flex; height: 6px; }
+  background: var(--fond); border-radius: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.2); }
+.bandeau { display: flex; height: 6px; border-radius: 10px 10px 0 0; overflow: hidden; }
 .bandeau span { flex: 1; }
 .panneau header { position: relative; padding: 12px 44px 10px 16px; }
 .panneau h1 { font-size: 17px; margin: 0; line-height: 1.25; }
@@ -38,13 +38,16 @@ input:focus, select:focus { outline: 2px solid var(--turquoise); outline-offset:
 #tous[hidden] { display: none; }
 #aucun { margin: 6px 0 0; font-size: 13px; color: var(--doux); }
 .panneau footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 16px;
-  border-top: 1px solid var(--trait); background: #faf9f6; font-size: 12px; color: var(--doux); }
+  border-top: 1px solid var(--trait); background: #faf9f6; font-size: 12px; color: var(--doux); border-radius: 0 0 10px 10px; }
 .panneau footer[hidden] { display: none; }
 .panneau footer a { color: #1f7a7e; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .panneau footer a:hover { text-decoration: underline; }
 .recherche { position: relative; }
 #suggestions { list-style: none; margin: 2px 0 0; padding: 0; position: absolute; left: 0; right: 0; z-index: 2;
-  background: #fff; border: 1px solid var(--trait); border-radius: 6px; max-height: 260px; overflow: auto; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+  background: #fff; border: 1px solid var(--trait); border-radius: 6px; max-height: min(260px, 50vh); overflow-y: auto;
+  overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--gris) transparent; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+#suggestions::-webkit-scrollbar { width: 8px; }
+#suggestions::-webkit-scrollbar-thumb { background: var(--gris); border-radius: 4px; }
 #suggestions:empty { display: none; }
 #suggestions li { padding: 7px 10px; cursor: pointer; }
 #suggestions li small { color: var(--doux); display: block; font-size: 12px; }
@@ -520,7 +523,7 @@ let resultats = [], actif = -1;
 function proposer() {
   const q = sansAccents(champ.value.trim());
   resultats = q.length < 2 ? [] : index.filter(e => e.cle.includes(q))
-    .sort((a, b) => (b.cle.startsWith(q) - a.cle.startsWith(q)) || a.texte.localeCompare(b.texte, "fr")).slice(0, 12);
+    .sort((a, b) => (b.cle.startsWith(q) - a.cle.startsWith(q)) || a.texte.localeCompare(b.texte, "fr")).slice(0, 50);  // liste défilante (ascenseur)
   actif = -1;
   liste.innerHTML = resultats.map((e, i) => `<li role="option" id="s${i}" data-i="${i}">${echap(e.texte)}` +
     (e.ancien ? `<small>ancien nom de ${echap(e.v.nom)}</small>` : e.site ? "<small>site</small>" : "") + "</li>").join("");
@@ -539,6 +542,7 @@ champ.addEventListener("keydown", ev => {
     ev.preventDefault();
     actif = (actif + (ev.key === "ArrowDown" ? 1 : -1) + resultats.length) % resultats.length;
     liste.querySelectorAll("li").forEach((li, i) => li.setAttribute("aria-selected", i === actif));
+    liste.querySelector(`li[aria-selected="true"]`)?.scrollIntoView({ block: "nearest" });
     champ.setAttribute("aria-activedescendant", "s" + actif);
   } else if (ev.key === "Enter") { ev.preventDefault(); choisir(actif < 0 ? 0 : actif); }
   else if (ev.key === "Escape") { liste.innerHTML = ""; }
