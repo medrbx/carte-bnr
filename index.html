@@ -37,6 +37,9 @@ input:focus, select:focus { outline: 2px solid var(--turquoise); outline-offset:
 #tous:hover { background: var(--survol); }
 #tous[hidden] { display: none; }
 #aucun { margin: 6px 0 0; font-size: 13px; color: var(--doux); }
+#ir { text-overflow: ellipsis; }
+#ir-compte { margin: 4px 0 0; font-size: 13px; color: var(--doux); }
+.fiche .filtre { margin: 0 0 4px; padding: 4px 8px; border-radius: 5px; background: var(--survol); }
 .panneau footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 16px;
   border-top: 1px solid var(--trait); background: #faf9f6; font-size: 12px; color: var(--doux); border-radius: 0 0 10px 10px; }
 .panneau footer[hidden] { display: none; }
@@ -87,6 +90,9 @@ input:focus, select:focus { outline: 2px solid var(--turquoise); outline-offset:
 .liste-fiches li:not(.actif) .vignette { filter: saturate(.35); opacity: .75; }
 .liste-fiches .titre { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .liste-fiches .nom { font-size: 14px; font-weight: 600; color: var(--encre); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* fonds datés (photographies aériennes) : la date en grand, le type de fond dessous */
+.liste-fiches .date { font-size: 16px; font-weight: 700; color: var(--encre); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.liste-fiches .type { font-size: 12px; color: var(--doux); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .liste-fiches .oeil, .liste-fiches .deplier { flex: none; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px;
   background: none; color: var(--doux); cursor: pointer; display: grid; place-items: center; }
 .liste-fiches .tete button:hover { background: var(--survol); color: var(--encre); }
@@ -191,6 +197,9 @@ input:focus, select:focus { outline: 2px solid var(--turquoise); outline-offset:
       <select id="quartier"><option value="">Tous les quartiers</option></select>
       <button id="tous" type="button" hidden title="Revoir toute la ville">Toute la ville</button>
     </div>
+    <label for="ir">Instrument de recherche</label>
+    <select id="ir"><option value="">Tous les instruments de recherche</option></select>
+    <p id="ir-compte" role="status" hidden></p>
     <div class="legende" aria-hidden="true">
       <span><i class="quartier"></i>Quartiers</span><span><i></i>Rues</span><span><i class="site"></i>Sites</span>
     </div>
@@ -230,11 +239,11 @@ const SOURCE_IGN = '&copy; <a href="https://www.ign.fr/">IGN</a> – Géoplatefo
 const fondsCarte = [
   { nom: "Plan IGN", principal: true, actif: true, couche: geopf("GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2", "image/png"),
     vignette: vignetteGeopf("GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2", "image/png"), source: "Plan IGN v2 – " + SOURCE_IGN },
-  { nom: "Photographies aériennes", couche: geopf("ORTHOIMAGERY.ORTHOPHOTOS", "image/jpeg"),
+  { nom: "Photographies aériennes actuelles", date: "Actuelles", type: "Photographies aériennes", couche: geopf("ORTHOIMAGERY.ORTHOPHOTOS", "image/jpeg"),
     vignette: vignetteGeopf("ORTHOIMAGERY.ORTHOPHOTOS", "image/jpeg"), source: "Photographies aériennes actuelles (BD ORTHO) – " + SOURCE_IGN },
-  { nom: "Photographies aériennes 1965-1980", couche: geopf("ORTHOIMAGERY.ORTHOPHOTOS.1965-1980", "image/png", 18, "BDORTHOHISTORIQUE"),
+  { nom: "Photographies aériennes 1965-1980", date: "1965 – 1980", type: "Photographies aériennes", couche: geopf("ORTHOIMAGERY.ORTHOPHOTOS.1965-1980", "image/png", 18, "BDORTHOHISTORIQUE"),
     vignette: vignetteGeopf("ORTHOIMAGERY.ORTHOPHOTOS.1965-1980", "image/png", "BDORTHOHISTORIQUE"), source: "Photographies aériennes 1965-1980 (BD ORTHO historique) – " + SOURCE_IGN },
-  { nom: "Photographies aériennes 1950-1965", couche: geopf("ORTHOIMAGERY.ORTHOPHOTOS.1950-1965", "image/png", 18),
+  { nom: "Photographies aériennes 1950-1965", date: "1950 – 1965", type: "Photographies aériennes", couche: geopf("ORTHOIMAGERY.ORTHOPHOTOS.1950-1965", "image/png", 18),
     vignette: vignetteGeopf("ORTHOIMAGERY.ORTHOPHOTOS.1950-1965", "image/png"), source: "Photographies aériennes 1950-1965 (BD ORTHO historique) – " + SOURCE_IGN },
   { nom: "Carte de 1950 (1/50 000)", couche: geopf("GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN50.1950", "image/jpeg", 15),
     vignette: vignetteGeopf("GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN50.1950", "image/jpeg"), source: "Carte de France au 1/50 000, type 1922, vers 1950 (SCAN 50 historique) – " + SOURCE_IGN },
@@ -278,12 +287,22 @@ function fiche(o, type) {
     o.quartiers.map(q => `<button class="lien" data-quartier="${echap(q)}">${echap(q)}</button>`).join(", ") + "</p>");
   if (type === "quartier") lignes.push(`<p>${o.voies} rue${o.voies > 1 ? "s" : ""} citée${o.voies > 1 ? "s" : ""} dans ce quartier</p>`);
   if (o.notices) {   // rue, quartier ou site : la liste de ses documents, chacun vers sa notice sur la BN-R
-    // classées par inventaire (IR) : les plus fournis d'abord ; repliés s'il y en a plusieurs et plus de 8 documents
+    // classées par inventaire (IR) : les plus fournis d'abord ; repliés s'il y en a plusieurs et plus de 8 documents.
+    // Filtre par instrument de recherche : seulement ses documents (tous, avec une mention, si le lieu n'en a aucun)
+    let notices = o.notices, n = o.n, filtre = false;
+    if (irChoisi) {
+      const titreIr = "« " + echap(D.ir[irChoisi] || irChoisi) + " »";
+      const garde = o.notices.filter(([ir]) => ir === irChoisi), k = garde.reduce((s, [, l]) => s + l.length, 0);
+      if (garde.length) {
+        notices = garde; n = k; filtre = true;
+        if (o.n > k) lignes.push(`<p class="meta filtre">Documents de ${titreIr} seulement (${o.n - k} autre${o.n - k > 1 ? "s" : ""} dans d'autres inventaires)</p>`);
+      } else lignes.push(`<p class="meta filtre">Aucun document de ${titreIr} : documents des autres inventaires</p>`);
+    }
     const ligne = ([titre, date, ark]) => "<li>" + (ark ? `<a href="${echap(D.ark + ark)}" target="_blank" rel="noopener">${echap(titre)}</a>`
       : `${echap(titre)} <span class="meta">(pas encore en ligne)</span>`) + (date ? ` <span class="meta">${echap(date)}</span>` : "") + "</li>";
-    const ouvert = o.notices.length === 1 || o.n <= 8;
-    lignes.push(`<p class="meta">${o.n} document${o.n > 1 ? "s" : ""} dans ${o.notices.length > 1 ? o.notices.length + " inventaires" : "les inventaires"}</p>` +
-      '<div class="notices">' + o.notices.map(([ir, l]) => {
+    const ouvert = notices.length === 1 || n <= 8;
+    lignes.push((filtre ? "" : `<p class="meta">${n} document${n > 1 ? "s" : ""} dans ${notices.length > 1 ? notices.length + " inventaires" : "les inventaires"}</p>`) +
+      '<div class="notices">' + notices.map(([ir, l]) => {
         const titreIr = `${echap(D.ir[ir] || ir)} <span class="meta">(${l.length})</span>`;
         return ouvert ? `<h3>${titreIr}</h3><ol>${l.map(ligne).join("")}</ol>`
                       : `<details><summary>${titreIr}</summary><ol>${l.map(ligne).join("")}</ol></details>`;
@@ -297,6 +316,8 @@ function fiche(o, type) {
 }
 
 let lieuChoisi = null;   // rue, quartier ou site dont la fiche est ouverte (widget des coordonnées)
+let irChoisi = "";       // instrument de recherche choisi dans le panneau ("" : tous)
+const dansIr = o => !irChoisi || (o.notices || []).some(([ir]) => ir === irChoisi);
 
 // Quartiers
 const parQuartier = {};
@@ -395,7 +416,7 @@ const choixCouches = L.control.layers({}, {
       li.innerHTML = `<div class="tete">
           <button type="button" class="poignee" title="Glisser pour changer l'ordre d'affichage" aria-label="Ordre d'affichage : ${nom} (flèches haut et bas)">${ico.poignee}</button>
           <img class="vignette" src="${echap(p.vignette)}" alt="" width="44" height="44">
-          <div class="titre"><span class="nom">${nom}</span></div>
+          <div class="titre">${p.date ? `<span class="date">${echap(p.date)}</span><span class="type">${echap(p.type)}</span>` : `<span class="nom">${nom}</span>`}</div>
           <button type="button" class="oeil" aria-pressed="false" title="Afficher" aria-label="Afficher : ${nom}">${ico.oeil}</button>
           <button type="button" class="deplier" aria-expanded="false" title="Réglages" aria-label="Réglages : ${nom}">${ico.chevron}</button>
         </div>
@@ -494,7 +515,7 @@ const marges = extra => window.innerWidth > 600
 function choisirQuartier(nom) {
   quartierChoisi = nom;
   document.getElementById("quartier").value = nom;
-  D.quartiers.forEach(o => o.couche.setStyle(styleQuartier(o, !nom ? "" : o.nom === nom ? "choisi" : "estompe")));
+  D.quartiers.forEach(o => o.couche.setStyle(styleQuartier(o, etatQuartier(o))));
   D.voies.forEach(v => v.couche.setStyle(styleVoie(etatVoie(v))));
   document.getElementById("tous").hidden = !nom;
   if (nom) { carte.fitBounds(parQuartier[nom].couche.getBounds(), marges());
@@ -502,7 +523,37 @@ function choisirQuartier(nom) {
   else { carte.fitBounds(ville, marges()); history.replaceState(null, "", location.pathname + location.search); }
 }
 const ville = L.featureGroup(D.quartiers.map(o => o.couche)).getBounds();
+const etatQuartier = o => quartierChoisi ? (o.nom === quartierChoisi ? "choisi" : "estompe") : dansIr(o) ? "" : "estompe";
 document.getElementById("tous").addEventListener("click", () => { carte.closePopup(); choisirQuartier(""); });
+
+// Filtre par instrument de recherche : rues et sites sans document de cet IR masqués, quartiers estompés,
+// fiches et recherche limitées à ses documents ; la vue se cadre sur les lieux concernés
+{
+  const selIr = document.getElementById("ir"), compte = document.getElementById("ir-compte");
+  const docs = {};
+  [...D.quartiers, ...D.voies, ...D.sites].forEach(o => (o.notices || []).forEach(([ir, l]) => { docs[ir] = (docs[ir] || 0) + l.length; }));
+  Object.keys(docs).sort((a, b) => (D.ir[a] || a).localeCompare(D.ir[b] || b, "fr")).forEach(ir => {
+    const opt = document.createElement("option"); opt.value = ir;
+    opt.textContent = `${D.ir[ir] || ir} (${docs[ir].toLocaleString("fr-FR")})`; opt.title = opt.textContent;
+    selIr.append(opt);
+  });
+  window.choisirIr = (ir, cadrer = true) => {
+    irChoisi = ir; selIr.value = ir; carte.closePopup();
+    D.voies.forEach(v => dansIr(v) ? coucheVoies.addLayer(v.couche) : coucheVoies.removeLayer(v.couche));
+    D.sites.forEach(s => dansIr(s) ? coucheSites.addLayer(s.couche) : coucheSites.removeLayer(s.couche));
+    D.quartiers.forEach(o => o.couche.setStyle(styleQuartier(o, etatQuartier(o))));
+    const n = t => D[t].filter(o => ir && dansIr(o)).length;
+    const pl = (k, un, plusieurs) => k + " " + (k > 1 ? plusieurs : un);
+    compte.hidden = !ir;
+    compte.textContent = ir ? [pl(n("voies"), "rue", "rues"), pl(n("sites"), "site", "sites"), pl(n("quartiers"), "quartier", "quartiers")].join(", ") : "";
+    champ.value = ""; liste.innerHTML = ""; document.getElementById("aucun").hidden = true;
+    if (!cadrer) return;
+    const lieux = [...D.voies, ...D.sites, ...D.quartiers].filter(o => ir && dansIr(o)).map(o => o.couche);
+    if (quartierChoisi) return;   // quartier choisi : la vue reste sur lui
+    carte.fitBounds(lieux.length ? L.featureGroup(lieux).getBounds() : ville, marges({ maxZoom: 17 }));
+  };
+  selIr.addEventListener("change", e => { choisirIr(e.target.value); if (surTelephone()) replier(true); });
+}
 document.getElementById("quartier").addEventListener("change", e => { carte.closePopup(); choisirQuartier(e.target.value); });
 carte.on("popupopen", e => e.popup.getElement().querySelectorAll("button[data-quartier]")
   .forEach(b => b.addEventListener("click", () => { carte.closePopup(); choisirQuartier(b.dataset.quartier); })));
@@ -522,7 +573,7 @@ const champ = document.getElementById("cherche"), liste = document.getElementByI
 let resultats = [], actif = -1;
 function proposer() {
   const q = sansAccents(champ.value.trim());
-  resultats = q.length < 2 ? [] : index.filter(e => e.cle.includes(q))
+  resultats = q.length < 2 ? [] : index.filter(e => e.cle.includes(q) && dansIr(e.v))
     .sort((a, b) => (b.cle.startsWith(q) - a.cle.startsWith(q)) || a.texte.localeCompare(b.texte, "fr")).slice(0, 50);  // liste défilante (ascenseur)
   actif = -1;
   liste.innerHTML = resultats.map((e, i) => `<li role="option" id="s${i}" data-i="${i}">${echap(e.texte)}` +
@@ -635,6 +686,8 @@ champ.addEventListener("keydown", ev => { if (ev.key === "Enter" && surTelephone
 // Lien direct : #voie=<id>, #quartier=<id> ou #site=<id>
 function suivreLien() {
   const m = location.hash.match(/^#(voie|quartier|site)=(.+)$/); if (!m) return;
+  const cible = m[1] === "site" ? parSite[m[2]] : m[1] === "voie" ? parVoie[m[2]] : null;
+  if (cible && !dansIr(cible)) choisirIr("", false);
   if (m[1] === "site" && parSite[m[2]]) { const s = parSite[m[2]]; carte.setView(s.couche.getLatLng(), 17, { animate: false }); s.couche.openPopup(); }
   if (m[1] === "voie" && parVoie[m[2]]) ouvrirVoie(parVoie[m[2]]);
   if (m[1] === "quartier") { const o = D.quartiers.find(q => q.id === m[2]); if (o) choisirQuartier(o.nom); }
